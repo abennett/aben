@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -73,8 +74,20 @@ func main() {
 	}()
 
 	var counter int
+	responseTimes := make([]float64, count*runtime.NumCPU())
+	var combined float64
+	fmt.Println("count,latency_ms,status_code")
 	for m := range mCh {
+		latency := float64(m.Latency.Milliseconds())
+		combined += latency
+		responseTimes[counter] = latency
 		counter++
 		fmt.Printf("%d,%d,%d\n", counter, m.Latency.Milliseconds(), m.StatusCode)
 	}
+	slices.Sort(responseTimes)
+	fmt.Println("\n===Finished===")
+	fmt.Printf("Min: %.2f\n", responseTimes[0])
+	fmt.Printf("Max: %.2f\n", responseTimes[len(responseTimes)-1])
+	fmt.Printf("Avg: %.2f\n", combined/float64(len(responseTimes)))
+
 }
