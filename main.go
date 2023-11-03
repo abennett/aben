@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -21,7 +22,13 @@ type Mark struct {
 
 func work(wg *sync.WaitGroup, url string, payload []byte, count int, mCh chan<- Mark) {
 	wg.Add(1)
-	client := http.Client{}
+	client := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
 	reader := bytes.NewReader(payload)
 	req, err := http.NewRequest("POST", url, reader)
 	if err != nil {
