@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"io"
 )
 
 // aben <url> <payload_file> <count> <user> <password>
@@ -36,6 +37,7 @@ func work(wg *sync.WaitGroup, url string, payload []byte, count int, mCh chan<- 
 		panic(err)
 	}
 	req.SetBasicAuth(os.Args[4], os.Args[5])
+	req.Header.Add("Content-Type", "application/json")
 	go func() {
 		defer wg.Done()
 		for x := 0; x < count; x++ {
@@ -44,6 +46,15 @@ func work(wg *sync.WaitGroup, url string, payload []byte, count int, mCh chan<- 
 			if err != nil {
 				slog.Error("request failed", "error", err)
 			} else {
+				if resp.StatusCode != 200 {
+					slog.Error("Request failed", "error", resp.StatusCode)
+					b, err := io.ReadAll(resp.Body)
+					if err != nil {
+						slog.Error("Unable to read request body", err)
+					} else {
+						slog.Error("Request Failed", string(b))
+					}
+				}
 				mCh <- Mark{resp.StatusCode, time.Now().Sub(start)}
 				reader.Seek(0, 0)
 			}
