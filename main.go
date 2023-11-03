@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,8 +23,9 @@ type Mark struct {
 	Latency    time.Duration
 }
 
-func work(wg *sync.WaitGroup, url string, payload []byte, count int, mCh chan<- Mark) {
+func work(wg *sync.WaitGroup, url string, source []byte, count int, mCh chan<- Mark) {
 	wg.Add(1)
+	payload := createPayload(source)
 	client := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
@@ -30,12 +33,13 @@ func work(wg *sync.WaitGroup, url string, payload []byte, count int, mCh chan<- 
 			},
 		},
 	}
-	reader := bytes.NewReader(payload)
-	req, err := http.NewRequest("POST", url, reader)
+	req, err := http.NewRequest("POST", url, payload)
 	if err != nil {
 		panic(err)
 	}
 	req.SetBasicAuth(os.Args[4], os.Args[5])
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Content-Encoding", "gzip")
 	go func() {
 		defer wg.Done()
 		for x := 0; x < count; x++ {
@@ -45,15 +49,22 @@ func work(wg *sync.WaitGroup, url string, payload []byte, count int, mCh chan<- 
 				slog.Error("request failed", "error", err)
 			} else {
 				mCh <- Mark{resp.StatusCode, time.Now().Sub(start)}
-				reader.Seek(0, 0)
 			}
+			payload.Seek(0, 0)
 		}
 	}()
 }
 
+func createPayload(source []byte) io.ReadSeeker {
+	var b bytes.Buffer
+	gw := gzip.NewWriter(&b)
+	gw.Write(source)
+	return bytes.NewReader(b.Bytes())
+}
+
 func main() {
 	url := os.Args[1]
-	payload, err := os.ReadFile(os.Args[2])
+	source, err := os.ReadFile(os.Args[2])
 	if err != nil {
 		panic(err)
 	}
@@ -65,7 +76,7 @@ func main() {
 	wg := new(sync.WaitGroup)
 	mCh := make(chan Mark, runtime.NumCPU())
 	for x := 0; x < runtime.NumCPU(); x++ {
-		work(wg, url, payload, count, mCh)
+		work(wg, url, source, count, mCh)
 	}
 
 	go func() {
